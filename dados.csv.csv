@@ -1,0 +1,11 @@
+﻿Codigo,Material,Lote,Unidade,Quantidade,DataEntrada,Validade,Categoria
+1,Cabo HDMI,A123,UN,50,1/10/2025,1/10/2027,Periféricos e TI
+2,Parafuso M6,B456,CX,200,2/5/2025,2/5/2028,Fixação e Ferragens
+3,Teclado USB,C789,UN,30,2/12/2025,2/12/2029,Periféricos e TI
+4,Fita Isolante,D012,PCT,100,2/18/2025,2/18/2027,Elétrica e Energia
+5,Mouse Optico,E345,UN,45,3/1/2025,3/1/2028,Periféricos e TI
+6,Lampada LED,F678,CX,80,3/10/2025,3/10/2027,Elétrica e Energia
+7,Filtro de Linha,G901,UN,25,3/15/2025,3/15/2030,Elétrica e Energia
+8,Bateria 12V,H234,UN,15,4/2/2025,10/2/2026,Elétrica e Energia
+9,Abraçadeira,I567,PCT,300,4/11/2025,4/11/2030,Fixação e Ferragens
+10,Conector RJ45,J890,CX,150,4/20/2025,4/20/2030,Periféricos e TI
