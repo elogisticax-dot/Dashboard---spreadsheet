@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dashboard – Controle de Materiais</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0b0c10;
+      --card: #15171e;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #22c55e;
+      --danger: #ef4444;
+      --border: #262933;
+    }
+    body.light {
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --accent: #16a34a;
+      --danger: #dc2626;
+      --border: #e5e7eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+    }
+    header h1 {
+      font-size: 18px;
+      margin: 0;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    input, select, button {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 14px;
+    }
+    button {
+      cursor: pointer;
+    }
+    main {
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .card h2 {
+      font-size: 14px;
+      color: var(--muted);
+      margin: 0 0 8px 0;
+    }
+    .card .value {
+      font-size: 22px;
+      font-weight: 600;
+    }
+    .charts-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+    }
+    .table-card {
+      overflow: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      background: var(--card);
+      z-index: 1;
+    }
+    tr:hover td {
+      background: rgba(255,255,255,0.03);
+    }
+    .status-ok { color: var(--accent); }
+    .status-alerta { color: var(--danger); }
+    .last-update {
+      font-size: 12px;
+      color: var(--muted);
+      text-align: right;
+      padding: 4px 20px 12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Dashboard – Controle de Materiais</h1>
+    <div class="controls">
+      <input id="busca" type="text" placeholder="Buscar material, código, lote..." />
+      <select id="filtroValidade">
+        <option value="todos">Validade: todos</option>
+        <option value="ok">Válidos</option>
+        <option value="alerta">Próximos / vencidos</option>
+      </select>
+      <button id="toggleTema">Tema</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="kpi-row">
+      <div class="card">
+        <h2>Total de itens</h2>
+        <div class="value" id="kpiTotal">0</div>
+      </div>
+      <div class="card">
+        <h2>Quantidade total em estoque</h2>
+        <div class="value" id="kpiQtd">0</div>
+      </div>
+      <div class="card">
+        <h2>Materiais próximos da validade</h2>
+        <div class="value" id="kpiValidade">0</div>
+      </div>
+      <div class="card">
+        <h2>Lotes distintos</h2>
+        <div class="value" id="kpiLotes">0</div>
+      </div>
+    </section>
+
+    <section class="charts-row">
+      <div class="card">
+        <h2>Quantidade por material</h2>
+        <canvas id="graficoMaterial"></canvas>
+      </div>
+      <div class="card">
+        <h2>Materiais por situação de validade</h2>
+        <canvas id="graficoValidade"></canvas>
+      </div>
+    </section>
+
+    <section class="card table-card">
+      <h2>Detalhamento</h2>
+      <table id="tabelaDados">
+        <thead>
+          <tr>
+            <th>Código</th>
+            <th>Material</th>
+            <th>Lote</th>
+            <th>Unidade</th>
+            <th>Quantidade</th>
+            <th>Entrada</th>
+            <th>Validade</th>
+            <th>Situação</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <div class="last-update" id="ultimaAtualizacao">
+      Última atualização: —
+    </div>
+  </main>
+
+  <script>
+    // CONFIGURAÇÃO: caminho do CSV
+    // Como o HTML e o CSV estão na mesma pasta, basta colocar o nome do arquivo:
+    const CSV_URL = "dados.csv";
+
+    let dadosBrutos = [];
+    let dadosFiltrados = [];
+    let graficoMaterialChart = null;
+    let graficoValidadeChart = null;
+
+    function parseCSV(text) {
+      const lines = text.trim().split(/\r?\n/);
+      if (lines.length === 0) return [];
+      const headers = lines[0].split(",").map(h => h.trim());
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(",").map(v => v.trim());
+        if (values.length < headers.length) continue;
+        const obj = {};
+        headers.forEach((h, idx) => {
+          obj[h] = values[idx] ?? "";
+        });
+        rows.push(obj);
+      }
+      return rows;
+    }
+
+    function situacaoValidade(validadeStr) {
+      if (!validadeStr) return "desconhecido";
+      const hoje = new Date();
+      const validade = new Date(validadeStr);
+      if (isNaN(validade.getTime())) return "desconhecido";
+      const diffDias = Math.floor((validade - hoje) / (1000 * 60 * 60 * 24));
+      if (diffDias < 0) return "vencido";
+      if (diffDias <= 60) return "alerta";
+      return "ok";
+    }
+
+    function processarDados(rows) {
+      return rows.map(r => {
+        const qtd = parseFloat((r.Quantidade || "0").replace(",", ".")) || 0;
+        const situacao = situacaoValidade(r.Validade);
+        return {
+          ...r,
+          QuantidadeNum: qtd,
+          Situacao: situacao
+        };
+      });
+    }
+
+    function aplicarFiltros() {
+      const busca = document.getElementById("busca").value.toLowerCase();
+      const filtroValidade = document.getElementById("filtroValidade").value;
+
+      dadosFiltrados = dadosBrutos.filter(d => {
+        const texto = (
+          (d.Codigo || "") + " " +
+          (d.Material || "") + " " +
+          (d.Lote || "")
+        ).toLowerCase();
+
+        const matchBusca = !busca || texto.includes(busca);
+
+        let matchValidade = true;
+        if (filtroValidade === "ok") {
+          matchValidade = d.Situacao === "ok";
+        } else if (filtroValidade === "alerta") {
+          matchValidade = d.Situacao === "alerta" || d.Situacao === "vencido";
+        }
+
+        return matchBusca && matchValidade;
+      });
+
+      renderizarTabela();
+      renderizarKPIs();
+      renderizarGraficos();
+    }
+
+    function renderizarTabela() {
+      const tbody = document.querySelector("#tabelaDados tbody");
+      tbody.innerHTML = "";
+      dadosFiltrados.slice(0, 500).forEach(d => {
+        const tr = document.createElement("tr");
+        const situacaoClass = d.Situacao === "ok" ? "status-ok" : "status-alerta";
+        const situacaoTexto = d.Situacao === "ok" ? "Válido" :
+                              d.Situacao === "alerta" ? "Próximo" : "Vencido";
+        tr.innerHTML = `
+          <td>${d.Codigo || ""}</td>
+          <td>${d.Material || ""}</td>
+          <td>${d.Lote || ""}</td>
+          <td>${d.Unidade || ""}</td>
+          <td>${d.Quantidade || ""}</td>
+          <td>${d.DataEntrada || ""}</td>
+          <td>${d.Validade || ""}</td>
+          <td class="${situacaoClass}">${situacaoTexto}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderizarKPIs() {
+      const totalItens = dadosFiltrados.length;
+      const qtdTotal = dadosFiltrados.reduce((acc, d) => acc + (d.QuantidadeNum || 0), 0);
+      const proximosValidade = dadosFiltrados.filter(d => d.Situacao === "alerta" || d.Situacao === "vencido").length;
+      const lotesDistintos = new Set(dadosFiltrados.map(d => d.Lote || "")).size;
+
+      document.getElementById("kpiTotal").textContent = totalItens;
+      document.getElementById("kpiQtd").textContent = qtdTotal.toLocaleString("pt-BR");
+      document.getElementById("kpiValidade").textContent = proximosValidade;
+      document.getElementById("kpiLotes").textContent = lotesDistintos;
+    }
+
+    function renderizarGraficos() {
+      // Quantidade por material (top 10)
+      const porMaterial = {};
+      dadosFiltrados.forEach(d => {
+        const mat = d.Material || "Sem nome";
+        porMaterial[mat] = (porMaterial[mat] || 0) + (d.QuantidadeNum || 0);
+      });
+      const topMateriais = Object.entries(porMaterial)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+      const labelsMat = topMateriais.map(x => x[0]);
+      const valuesMat = topMateriais.map(x => x[1]);
+
+      if (graficoMaterialChart) {
+        graficoMaterialChart.data.labels = labelsMat;
+        graficoMaterialChart.data.datasets[0].data = valuesMat;
+        graficoMaterialChart.update();
+      } else {
+        const ctx1 = document.getElementById("graficoMaterial").getContext("2d");
+        graficoMaterialChart = new Chart(ctx1, {
+          type: "bar",
+          data: {
+            labels: labelsMat,
+            datasets: [{
+              label: "Quantidade",
+              data: valuesMat,
+              backgroundColor: "#22c55e"
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { beginAtZero: true }
+            }
+          }
+        });
+      }
+
+      // Situação de validade
+      const contagemValidade = { ok: 0, alerta: 0, vencido: 0, desconhecido: 0 };
+      dadosFiltrados.forEach(d => {
+        contagemValidade[d.Situacao] = (contagemValidade[d.Situacao] || 0) + 1;
+      });
+
+      const labelsVal = ["Válidos", "Próximos", "Vencidos", "Sem info"];
+      const valuesVal = [
+        contagemValidade.ok,
+        contagemValidade.alerta,
+        contagemValidade.vencido,
+        contagemValidade.desconhecido
+      ];
+
+      if (graficoValidadeChart) {
+        graficoValidadeChart.data.datasets[0].data = valuesVal;
+        graficoValidadeChart.update();
+      } else {
+        const ctx2 = document.getElementById("graficoValidade").getContext("2d");
+        graficoValidadeChart = new Chart(ctx2, {
+          type: "doughnut",
+          data: {
+            labels: labelsVal,
+            datasets: [{
+              data: valuesVal,
+              backgroundColor: ["#22c55e", "#f59e0b", "#ef4444", "#9ca3af"]
+            }]
+          },
+          options: {
+            responsive: true
+          }
+        });
+      }
+    }
+
+    async function carregarDados() {
+      try {
+        const res = await fetch(CSV_URL, { cache: "no-store" });
+        if (!res.ok) throw new Error("Erro ao carregar CSV");
+        const text = await res.text();
+        const rows = parseCSV(text);
+        dadosBrutos = processarDados(rows);
+        aplicarFiltros();
+        const agora = new Date();
+        document.getElementById("ultimaAtualizacao").textContent =
+          "Última atualização: " + agora.toLocaleString("pt-BR");
+      } catch (err) {
+        console.error(err);
+        document.getElementById("ultimaAtualizacao").textContent =
+          "Erro ao carregar dados. Verifique se o arquivo dados.csv existe e está na mesma pasta.";
+      }
+    }
+
+    // Controles
+    document.getElementById("busca").addEventListener("input", aplicarFiltros);
+    document.getElementById("filtroValidade").addEventListener("change", aplicarFiltros);
+    document.getElementById("toggleTema").addEventListener("click", () => {
+      document.body.classList.toggle("light");
+    });
+
+    // Polling: atualiza a cada 0,5 segundos (500 ms)
+    setInterval(carregarDados, 500);
+
+    // Primeira carga
+    carregarDados();
+  </script>
+</body>
+</html>
